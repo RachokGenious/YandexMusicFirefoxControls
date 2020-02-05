@@ -1,6 +1,8 @@
 document.addEventListener("DOMContentLoaded", handleDomLoaded);
 let activePlayer;
-let progressTimer;
+let progressBarIntervalId;
+let progressTimeIntervalId;
+let currentProgressSeconds = 0;
 let showNotifications;
 
 browser.runtime.onMessage.addListener(handleMessage);
@@ -158,7 +160,9 @@ function createBigPlayer(response, tab) {
     .then(rs => {
       if (rs.isPlaying) {
         let songProgress = document.getElementById('songprogress');
-        progressTimer = setInterval(handleProgress, 1000, songProgress);
+        let currentTime = document.getElementById('currenttime');
+        progressBarIntervalId = setInterval(handleProgressBar, 1000, songProgress);
+        progressTimeIntervalId = setInterval(handleProgressTime, 1000, currentTime);
       } else {
         stopProgress();
       }
@@ -281,13 +285,23 @@ function updatePlayButtonsState(pressedI, isPlaying) {
   }
 }
 
-function handleProgress(progressbar) {
-  let newWidth = parseInt(progressbar.style.width.replace("%", "")) + 1;
+function handleProgressBar(progressbarEl) {
+  let newWidth = parseInt(progressbarEl.style.width.replace("%", "")) + 1;
   if (newWidth > 100) {
     newWidth = 100;
     stopProgress();
   }
-  progressbar.style.width = newWidth + "%";
+  progressbarEl.style.width = newWidth + "%";
+}
+
+function handleProgressTime(currentTimeEl) {
+  currentTimeEl.textContent = formatTime(currentProgressSeconds++);
+}
+
+function formatTime(seconds) {
+  console.log(seconds);
+  let timeString = new Date(0,0,0,0,0,Math.ceil(seconds),0).toTimeString().slice(0,8)
+  return timeString.startsWith("00:") ? timeString.slice(3) : timeString;
 }
 
 function fillPlayerData(response, tabId) {
@@ -295,9 +309,12 @@ function fillPlayerData(response, tabId) {
       'http://' + response.currentTrack.cover.replace('%%', '200x200'));
   document.getElementById('albumcover-smoke').setAttribute('src',
       'http://' + response.currentTrack.cover.replace('%%', '200x200'));
+  let currentTime = document.getElementById('currenttime');
+  let totalTime = document.getElementById('totaltime')    
   let songTitle = document.getElementById('songtitle');
   let albumTitle = document.getElementById('albumtitle');
   let bandTitle = document.getElementById('bandtitle');
+  totalTime.textContent = formatTime(response.currentTrack.duration);
   albumTitle.textContent = response.currentTrack.album.title;
   songTitle.textContent = response.currentTrack.title;
   bandTitle.childNodes[0].textContent = response.currentTrack.artists.length > 0
@@ -315,16 +332,20 @@ function fillPlayerData(response, tabId) {
   }
   let songProgress = document.getElementById('songprogress');
 
+  currentProgressSeconds = response.progress.position;
   if (response.progress.position !== 0 && response.progress.duration !== 0) {
     let currentPos = response.progress.position / response.progress.duration * 100;
     songProgress.style.width = Math.round(currentPos) + "%";
+    currentTime.textContent = formatTime(response.progress.position);
   } else {
     songProgress.style.width = "0%";
+    currentTime.textContent = '00:00';
   }
   stopProgress();
   let timeout = response.currentTrack.duration / 100 * 1000;
   if (response.isPlaying) {
-    progressTimer = setInterval(handleProgress, timeout, songProgress);
+    progressTimeIntervalId = setInterval(handleProgressTime, 1000, currentTime);
+    progressBarIntervalId = setInterval(handleProgressBar, timeout, songProgress);
   }
 }
 
@@ -436,7 +457,10 @@ function toggleRepeatStatusIcon(repeat, button) {
 }
 
 function stopProgress() {
-  if (progressTimer !== undefined && progressTimer != null) {
-    clearInterval(progressTimer);
+  if (progressBarIntervalId !== undefined && progressBarIntervalId != null) {
+    clearInterval(progressBarIntervalId);
+  }
+  if (progressTimeIntervalId !== undefined && progressTimeIntervalId != null) {
+    clearInterval(progressTimeIntervalId);
   }
 }
